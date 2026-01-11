@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrD AI Inventory Counter</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <style>
+        body { margin: 0; font-family: 'Segoe UI', sans-serif; background: #0f172a; color: white; text-align: center; }
+        #header { padding: 15px; background: #1e3a8a; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+        #video-container { position: relative; width: 100vw; height: 70vh; background: #000; overflow: hidden; }
+        video, canvas { position: absolute; top: 0; left: 50%; transform: translateX(-50%); height: 100%; }
+        .controls { padding: 20px; }
+        .counter-badge {
+            background: #10b981; color: white; padding: 10px 20px;
+            border-radius: 50px; font-size: 24px; font-weight: bold;
+            display: inline-block; margin-top: -30px; position: relative; z-index: 10;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        #status { font-size: 12px; color: #94a3b8; margin-top: 10px; }
+        .loading-screen {
+            position: fixed; inset: 0; background: #1e3a8a;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100;
+        }
+    </style>
+</head>
+<body>
+
+<div id="loading" class="loading-screen">
+    <h2>TrD AI Counting Engine</h2>
+    <p>Loading AI Model (Approx 10MB)...</p>
+</div>
+
+<div id="header">
+    <h1 style="margin:0; font-size: 18px;">Automated Inventory Counter</h1>
+</div>
+
+<div id="video-container">
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+</div>
+
+<div class="counter-badge">
+    COUNT: <span id="count-num">0</span>
+</div>
+
+<div class="controls">
+    <button id="toggleBtn" onclick="toggleCamera()" style="padding: 12px 25px; border-radius: 8px; border: none; background: #2563eb; color: white; font-weight: bold;">START SCANNER</button>
+    <div id="status">Ready to scan TrD components</div>
+</div>
+
+<script>
+    let model;
+    let video = document.getElementById('video');
+    let canvas = document.getElementById('canvas');
+    let ctx = canvas.getContext('2d');
+    let isRunning = false;
+
+    // 1. Load the AI Model
+    async function loadAI() {
+        model = await cocoSsd.load();
+        document.getElementById('loading').style.display = 'none';
+    }
+    loadAI();
+
+    // 2. Start/Stop Camera
+    async function toggleCamera() {
+        if (!isRunning) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" }
+                });
+                video.srcObject = stream;
+                isRunning = true;
+                document.getElementById('toggleBtn').innerText = "STOP SCANNER";
+                detectFrame();
+            } catch (err) {
+                alert("Camera error: Ensure you are using HTTPS");
+            }
+        } else {
+            location.reload(); // Easiest way to stop and clear memory
+        }
+    }
+
+    // 3. The Detection Loop
+    async function detectFrame() {
+        if (!isRunning) return;
+
+        const predictions = await model.detect(video);
+        
+        // Match canvas size to video
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        let count = 0;
+        predictions.forEach(prediction => {
+            // General filter: count items detected with > 50% confidence
+            if (prediction.score > 0.5) {
+                count++;
+                
+                // Draw Box
+                ctx.strokeStyle = "#10b981";
+                ctx.lineWidth = 4;
+                ctx.strokeRect(...prediction.bbox);
+
+                // Draw Label
+                ctx.fillStyle = "#10b981";
+                ctx.font = "16px Arial";
+                ctx.fillText(
+                    `${prediction.class} (${Math.round(prediction.score * 100)}%)`,
+                    prediction.bbox[0], 
+                    prediction.bbox[1] > 10 ? prediction.bbox[1] - 5 : 10
+                );
+            }
+        });
+
+        document.getElementById('count-num').innerText = count;
+        requestAnimationFrame(detectFrame);
+    }
+</script>
+</body>
+</html>
